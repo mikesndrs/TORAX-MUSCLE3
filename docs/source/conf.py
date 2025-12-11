@@ -15,46 +15,29 @@ import sphinx_autosummary_accessors
 from jinja2.defaults import DEFAULT_FILTERS
 from packaging.version import Version
 
-import torax-m3
-
+import torax_muscle3
 
 print("python exec:", sys.executable)
 print("sys.path:", sys.path)
 
 # -- Project information -----------------------------------------------------
 # The documented project’s name
-project = src_project = PROJECT = "torax-m3"
-PACKAGE = "torax-m3"
-src_group = GROUP = "IMEX"
+project = src_project = PROJECT = "TORAX-MUSCLE3"
+PACKAGE = "TORAX-MUSCLE3"
 
 # A copyright statement in the style '2008, Author Name'.
 copyright = f"2020-{datetime.datetime.now().year}, ITER Organization"
 # The author name(s) of the document
 author = "ITER Organization"
-src_host = "git.iter.org"
-
-# Parse urls here for convenience, to be re-used
-
-# ITER docs
-iter_projects = "https://git.iter.org/projects/"
-imas_repos = urljoin(iter_projects, "IMAS/")
-imex_repos = urljoin(iter_projects, "IMEX/")
-issue_url = jira_url = "https://jira.iter.org/browse/"
-
-# PDS
-repository_url = f"{iter_projects}/{src_group}/repos/{src_project}/"
-blob_url = urljoin(repository_url, "browse/")
-mr_url = urljoin(repository_url, "/pull-requests")
-
+src_host = "https://github.com/iterorganization/"
 
 # Configuration of sphinx.ext.extlinks
 # See https://www.sphinx-doc.org/en/master/usage/extensions/extlinks.html
 # unique name: (base URL, label prefix)
-extlinks = {
-    "src": (blob_url + "%s", f"{src_group}/{src_project}/%s"),
-}
+extlinks = {}
 
-full_version = Version(torax-m3.__version__)
+
+full_version = Version(torax_muscle3.__version__)
 
 # version: The major project version, used as the replacement for |version|.
 #   For example, for the Python documentation, this may be something like 2.6.
@@ -128,8 +111,8 @@ html_theme = "sphinx_immaterial"
 # and
 # https://sphinx-immaterial.readthedocs.io/en/latest/customization.html#confval-html_theme_options
 html_theme_options = {
-    "repo_url": "https://git.iter.org/projects/SCEN/repos/torax-m3",
-    "repo_name": "torax-m3",
+    "repo_url": "https://github.com/mikesndrs/TORAX-MUSCLE3",
+    "repo_name": "TORAX-MUSCLE3",
     "icon": {
         "repo": "fontawesome/brands/bitbucket",
     },
@@ -252,7 +235,7 @@ html_last_updated_fmt = today_fmt
 # html_file_suffix = None
 
 # Output file base name for HTML help builder.
-htmlhelp_basename = "torax-m3_doc"
+htmlhelp_basename = "torax-muscle3_doc"
 
 
 # -- Extension configuration -------------------------------------------------
@@ -297,4 +280,4 @@ def escape_underscores(string):
 
 def setup(app):
     DEFAULT_FILTERS["escape_underscores"] = escape_underscores
-    app.add_css_file("torax-m3.css")
+    app.add_css_file("torax-muscle3.css")
