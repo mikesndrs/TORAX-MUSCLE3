@@ -5,13 +5,13 @@ requires = ["setuptools>=61", "wheel", "packaging", "tomli;python_version<'3.11'
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "TORAX-MUSCLE3"
+name = "torax-muscle3"
 authors = [
   {name = "Mike Sanders", email = "msanders@ignitioncomputing.com"}
 ]
 description = "TORAX IMAS MUSCLE3 wrapper"
 readme = {file = "README.md", content-type = "text/markdown"}
-requires-python = ">=3.7"
+requires-python = ">=3.11"
 license = {file = "LICENSE.md"}
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -28,7 +28,7 @@ classifiers = [
     "Intended Audience :: System Administrators",
 # The license is prepended by private which makes it a valid trove classifier,
 # it will also prevent uploading to package indices such as PyPI
-    "Private :: License :: ITER License",
+    "License :: OSI Approved :: GNU Lesser General Public License v3 (LGPLv3)",
     "Natural Language :: English",
     "Operating System :: POSIX",
     "Operating System :: POSIX :: Linux",
@@ -62,7 +62,7 @@ dependencies = [
 [project.optional-dependencies]
 # these self-dependencies are available since pip 21.2
 all = [
-    "TORAX-MUSCLE3[docs,test,linting]"
+    "torax-muscle3[docs,test,linting]"
 ]
 docs = [
     "sphinx>=6.0.0,<7.0.0",
@@ -95,17 +95,13 @@ minversion = "6.0"
 addopts = "--strict-markers"
 testpaths = "tests"
 
-[tool.versioneer]
-VCS = "git"
-style = "pep440"
-versionfile_source = "TORAX-MUSCLE3/_version.py"
-versionfile_build = "TORAX-MUSCLE3/_version.py"
-tag_prefix = ""
-parentdir_prefix = ""
+[tool.setuptools_scm]
+write_to = "torax_muscle3/_version.py"
+local_scheme = "no-local-version"
 
 [tool.black]
 # Exclude versioneer-generated file
-force-exclude = "TORAX-MUSCLE3/_version.py"
+force-exclude = "torax_muscle3/_version.py"
 
 [tool.mypy]
 packages = "torax_muscle3"
