@@ -54,7 +54,8 @@ dependencies = [
     # "torax[dev] @ git+https://github.com/google-deepmind/torax.git@main",
     "torax[dev]>=1.2.0",
     "imas-python",
-    "imas_core @ git+ssh://git@git.iter.org/imas/al-core.git@develop",
+    # "imas_core @ git+ssh://git@git.iter.org/imas/al-core.git@develop",
+    "imas_core",
     "muscle3",
 ]
 
