@@ -1,6 +1,6 @@
 [build-system]
 # Minimum requirements for the build system to execute.
-requires = ["setuptools>=61", "wheel", "packaging", "tomli;python_version<'3.11'", "versioneer[toml]"]
+requires = ["setuptools>=61", "wheel", "packaging", "tomli;python_version<'3.11'", "setuptools_scm>8"]
 
 build-backend = "setuptools.build_meta"
 
