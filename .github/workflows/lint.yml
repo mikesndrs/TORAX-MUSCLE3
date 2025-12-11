@@ -20,13 +20,13 @@ jobs:
           pip install --upgrade .[linting]
       - name: black
         run: |
-          black --check imas_muscle3
+          black --check torax_muscle3
       - name: flake8
         run: |
-          flake8 imas_muscle3
+          flake8 torax_muscle3
       - name: mypy
         run: |
-          mypy imas_muscle3
+          mypy torax_muscle3
       - name: isort
         run: |
-          isort --check-only imas_muscle3
+          isort --check-only torax_muscle3
