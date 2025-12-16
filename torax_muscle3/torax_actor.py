@@ -116,6 +116,7 @@ class ToraxMuscleRunner:
 
     def run_f_init(self) -> None:
         self.receive_equilibrium(port_name="f_init")
+        self.receive_core_profiles(port_name="f_init")
         # self.sim_state.t = self.t_cur
         self.t_cur = self.sim_state.t
         if self.first_run or self.instance.is_connected("equilibrium_f_init"):
@@ -145,10 +146,9 @@ class ToraxMuscleRunner:
                 self.send_ids(core_profiles_data, "core_profiles", "o_i")
 
     def run_s(self) -> None:
-        if self.instance.is_connected("equilibrium_s") and (
-            self.t_cur >= self.last_equilibrium_call + self.equilibrium_interval
-        ):
+        if self.t_cur >= self.last_equilibrium_call + self.equilibrium_interval:
             self.receive_equilibrium(port_name="s")
+            self.receive_core_profiles(port_name="s")
 
     def run_timestep(self) -> None:
         self.sim_state, self.post_processed_outputs = self.step_fn(
@@ -269,10 +269,10 @@ class ToraxMuscleRunner:
         self.last_equilibrium_call = self.t_cur
         self.torax_config.update_fields(
             {
-                "geometry": Geometry(
-                    geometry_type=geometry.GeometryType.IMAS,
-                    geometry_configs=geometry_configs,
-                )
+                "geometry": {
+                    'geometry_type': geometry.GeometryType.IMAS,
+                    'geometry_configs': geometry_configs,
+                }
             }
         )
         self.step_fn = make_step_fn(self.torax_config)
@@ -296,7 +296,7 @@ class ToraxMuscleRunner:
 
         core_profiles_conditions = profile_conditions_from_IMAS(core_profiles_data)
         self.torax_config.update_fields(
-            {"profile_conditions": ProfileConditions(core_profiles_conditions)}
+            {"profile_conditions": core_profiles_conditions}
         )
         self.step_fn = make_step_fn(self.torax_config)
 
