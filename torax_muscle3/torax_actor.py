@@ -18,23 +18,27 @@ from imas import DBEntry, IDSFactory
 from imas.ids_defs import CLOSEST_INTERP
 from imas.ids_toplevel import IDSToplevel
 from libmuscle import Instance, Message
+from torax import experimental as torax_experimental
 from torax._src.config.build_runtime_params import (
+    RuntimeParamsProvider,
     get_consistent_runtime_params_and_geometry,
 )
 from torax._src.config.config_loader import build_torax_config_from_file
-from torax._src.core_profiles.profile_conditions import ProfileConditions
 from torax._src.geometry import geometry
 from torax._src.geometry.imas import IMASConfig
-from torax._src.geometry.pydantic_model import Geometry, GeometryConfig
+from torax._src.geometry.pydantic_model import GeometryConfig
+from torax._src.geometry.standard_geometry import StandardGeometryProvider
 from torax._src.imas_tools.input.core_profiles import profile_conditions_from_IMAS
 from torax._src.imas_tools.output.core_profiles import core_profiles_to_IMAS
 from torax._src.imas_tools.output.equilibrium import torax_state_to_imas_equilibrium
 from torax._src.orchestration import initial_state as initial_state_lib
 from torax._src.orchestration.run_simulation import make_step_fn, prepare_simulation
+from torax._src.orchestration.sim_state import SimState
+from torax._src.orchestration.step_function import SimulationStepFn
+from torax._src.output_tools.post_processing import PostProcessedOutputs
 from torax._src.state import SimError
 from torax._src.torax_pydantic.model_config import ToraxConfig
 from ymmsl import Operator
-from torax import experimental as torax_experimental
 
 from torax_muscle3.utils import (
     ExtraVarCollection,
@@ -47,22 +51,21 @@ logger = logging.getLogger()
 
 
 class ToraxMuscleRunner:
-    from torax._src.orchestration.sim_state import SimState
-    from torax._src.orchestration.step_function import SimulationStepFn
 
+    coupled_ids_names = ["equilibrium", "core_profiles"]
     # first_run
     first_run: bool = True
     output_all_timeslices: Optional[bool] = False
     db_out: DBEntry
     torax_config: ToraxConfig
     step_fn: SimulationStepFn
-    time_step_calculator_dynamic_params = None
     equilibrium_interval = None
 
     # state
     sim_state: SimState
-    post_processed_outputs = None
-    geometry_provider = None
+    post_processed_outputs: PostProcessedOutputs
+    geometry_provider: StandardGeometryProvider
+    runtime_params_provider: RuntimeParamsProvider
     extra_var_col: ExtraVarCollection
     t_cur: float
     t_next_inner: Optional[float] = None
@@ -112,15 +115,13 @@ class ToraxMuscleRunner:
             self.step_fn,
         ) = prepare_simulation(self.torax_config)
         self.geometry_provider = self.torax_config.geometry.build_provider
-
-        self.time_step_calculator_dynamic_params = self.step_fn.runtime_params_provider(
-            self.sim_state.t
-        ).time_step_calculator
+        self.runtime_params_provider = RuntimeParamsProvider.from_config(
+            self.torax_config
+        )
 
     def run_f_init(self) -> None:
-        self.receive_equilibrium(port_name="f_init")
-        self.receive_core_profiles(port_name="f_init")
-        # self.sim_state.t = self.t_cur
+        for ids_name in self.coupled_ids_names:
+            self.receive_ids(ids_name=ids_name, port_name="f_init")
         self.t_cur = self.sim_state.t
         if self.first_run or self.instance.is_connected("equilibrium_f_init"):
             self.step_fn = make_step_fn(self.torax_config)
@@ -128,37 +129,36 @@ class ToraxMuscleRunner:
                 initial_state_lib.get_initial_state_and_post_processed_outputs(
                     step_fn=self.step_fn,
                     geometry_overrides=self.geometry_provider,
+                    runtime_params_overrides=self.runtime_params_provider,
                 )
             )
             self.t_final = self.step_fn.runtime_params_provider.numerics.t_final
         self.first_run = False
 
         if self.output_all_timeslices:
-            equilibrium_data = self.get_equilibrium_ids()
-            core_profiles_data = self.get_core_profiles_ids()
-            self.db_out.put_slice(equilibrium_data)
-            self.db_out.put_slice(core_profiles_data)
+            for ids_name in self.coupled_ids_names:
+                ids_data = self.get_ids(ids_name)
+                self.db_out.put_slice(ids_data)
 
     def run_o_i(self) -> None:
         self.t_next_inner = self.get_t_next()
         if self.t_cur >= self.last_equilibrium_call + self.equilibrium_interval:
-            if self.instance.is_connected("equilibrium_o_i"):
-                equilibrium_data = self.get_equilibrium_ids()
-                self.send_ids(equilibrium_data, "equilibrium", "o_i")
-            if self.instance.is_connected("core_profiles_o_i"):
-                core_profiles_data = self.get_core_profiles_ids()
-                self.send_ids(core_profiles_data, "core_profiles", "o_i")
+            for ids_name in self.coupled_ids_names:
+                if self.instance.is_connected(f"{ids_name}_o_i"):
+                    ids_data = self.get_ids(ids_name)
+                    self.send_ids(ids_data, ids_name, "o_i")
 
     def run_s(self) -> None:
         if self.t_cur >= self.last_equilibrium_call + self.equilibrium_interval:
-            self.receive_equilibrium(port_name="s")
-            self.receive_core_profiles(port_name="s")
+            for ids_name in self.coupled_ids_names:
+                self.receive_ids(ids_name=ids_name, port_name="s")
 
     def run_timestep(self) -> None:
         self.sim_state, self.post_processed_outputs = self.step_fn(
             self.sim_state,
             self.post_processed_outputs,
             geo_overrides=self.geometry_provider,
+            runtime_params_overrides=self.runtime_params_provider,
         )
         sim_error = self.step_fn.check_for_errors(
             self.sim_state,
@@ -167,24 +167,22 @@ class ToraxMuscleRunner:
         self.t_cur = self.sim_state.t
 
         if self.output_all_timeslices:
-            equilibrium_data = self.get_equilibrium_ids()
-            core_profiles_data = self.get_core_profiles_ids()
-            self.db_out.put_slice(equilibrium_data)
-            self.db_out.put_slice(core_profiles_data)
+            for ids_name in self.coupled_ids_names:
+                ids_data = self.get_ids(ids_name)
+                self.db_out.put_slice(ids_data)
 
         if sim_error != SimError.NO_ERROR:
             raise Exception(sim_error)
 
     def run_o_f(self) -> None:
+        for ids_name in self.coupled_ids_names:
+            if self.output_all_timeslices:
+                ids_data = self.db_out.get(ids_name)
+            else:
+                ids_data = self.get_ids(ids_name)
+            self.send_ids(ids_data, ids_name, "o_f")
         if self.output_all_timeslices:
-            equilibrium_data = self.db_out.get("equilibrium")
-            core_profiles_data = self.db_out.get("core_profiles")
             self.db_out.close()
-        else:
-            equilibrium_data = self.get_equilibrium_ids()
-            core_profiles_data = self.get_core_profiles_ids()
-        self.send_ids(equilibrium_data, "equilibrium", "o_f")
-        self.send_ids(core_profiles_data, "core_profiles", "o_f")
 
     def get_instance(self) -> None:
         coupled_ids_names = ["equilibrium", "core_profiles"]
@@ -198,6 +196,17 @@ class ToraxMuscleRunner:
                 Operator.O_F: [f"{ids_name}_o_f" for ids_name in coupled_ids_names],
             }
         )
+
+    def get_ids(self, ids_name: str) -> IDSToplevel:
+        if ids_name == "equilibrium":
+            ids_data = self.get_equilibrium_ids()
+        elif ids_name == "core_profiles":
+            ids_data = self.get_core_profiles_ids()
+        else:
+            raise RuntimeError(
+                f"Trying to get uncoupled IDS {ids_name} from Torax state"
+            )
+        return ids_data
 
     def get_equilibrium_ids(self) -> IDSToplevel:
         equilibrium_data = torax_state_to_imas_equilibrium(
@@ -219,10 +228,18 @@ class ToraxMuscleRunner:
         )
         return core_profiles_data
 
+    def receive_ids(self, ids_name: str, port_name: str) -> None:
+        if ids_name == "equilibrium":
+            self.receive_equilibrium(port_name)
+        elif ids_name == "core_profiles":
+            self.receive_core_profiles(port_name)
+        else:
+            raise RuntimeError(f"Trying to receive uncoupled IDS {ids_name}")
+
     def receive_equilibrium(self, port_name: str) -> None:
         if not self.instance.is_connected(f"equilibrium_{port_name}"):
             return
-        equilibrium_data, self.t_cur, t_next = self.receive_ids(
+        equilibrium_data, self.t_cur, t_next = self.receive_ids_data(
             "equilibrium", port_name
         )
         if port_name == "f_init":
@@ -274,15 +291,15 @@ class ToraxMuscleRunner:
         self.last_equilibrium_call = self.t_cur
         self.geometry_provider = torax_experimental.geometry.Geometry.from_dict(
             {
-                'geometry_type': geometry.GeometryType.IMAS,
-                'geometry_configs': geometry_configs,
+                "geometry_type": geometry.GeometryType.IMAS,
+                "geometry_configs": geometry_configs,
             }
         ).build_provider
 
     def receive_core_profiles(self, port_name: str) -> None:
         if not self.instance.is_connected(f"core_profiles_{port_name}"):
             return
-        core_profiles_data, self.t_cur, t_next = self.receive_ids(
+        core_profiles_data, self.t_cur, t_next = self.receive_ids_data(
             "core_profiles", port_name
         )
         if port_name == "f_init":
@@ -290,6 +307,7 @@ class ToraxMuscleRunner:
         elif port_name == "s":
             self.t_next_inner = t_next
 
+        # ignore this entry if input source didn't converge
         if (
             core_profiles_data.code.output_flag
             and core_profiles_data.code.output_flag[0] == -1
@@ -300,9 +318,11 @@ class ToraxMuscleRunner:
         self.torax_config.update_fields(
             {"profile_conditions": core_profiles_conditions}
         )
-        self.step_fn = make_step_fn(self.torax_config)
+        self.runtime_params_provider = RuntimeParamsProvider.from_config(
+            self.torax_config
+        )
 
-    def receive_ids(
+    def receive_ids_data(
         self, ids_name: str, port_name: str
     ) -> Tuple[IDSToplevel, float, Optional[float]]:
         if not self.instance.is_connected(f"{ids_name}_{port_name}"):
@@ -327,8 +347,8 @@ class ToraxMuscleRunner:
     def get_t_next(self) -> Optional[float]:
         runtime_params_t, geo_t = get_consistent_runtime_params_and_geometry(
             t=self.sim_state.t,
-            runtime_params_provider=self.step_fn.runtime_params_provider,
-            geometry_provider=self.step_fn._geometry_provider,
+            runtime_params_provider=self.runtime_params_provider,
+            geometry_provider=self.geometry_provider,
         )
         dt = self.step_fn.time_step_calculator.next_dt(
             self.sim_state.t,

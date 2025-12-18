@@ -1,13 +1,11 @@
 import imas
+import libmuscle
 import pytest
-import torax
+import ymmsl
 from imas.ids_defs import CLOSEST_INTERP
 
 import torax_muscle3
 from torax_muscle3.torax_actor import main as torax_actor
-
-import ymmsl
-import libmuscle
 
 
 def source_for_tests():
@@ -163,7 +161,7 @@ YMMSL_INPUT_CORE_PROFILES = YMMSL_INPUT_TEMPLATE.replace("IDS_NAME", "core_profi
 YMMSL_OUTPUT_EQUILIBRIUM = YMMSL_OUTPUT_TEMPLATE.replace("IDS_NAME", "equilibrium")
 YMMSL_OUTPUT_CORE_PROFILES = YMMSL_OUTPUT_TEMPLATE.replace("IDS_NAME", "core_profiles")
 YMMSL_REPLY_EQUILIBRIUM = YMMSL_REPLY_TEMPLATE.replace("IDS_NAME", "equilibrium")
-YMMSL_REPLY_CORE_PROFILES = YMMSL_REPLY_TEMPLATE.replace('IDS_NAME', 'core_profiles')
+YMMSL_REPLY_CORE_PROFILES = YMMSL_REPLY_TEMPLATE.replace("IDS_NAME", "core_profiles")
 YMMSL_INNER_EQUILIBRIUM = YMMSL_INNER_TEMPLATE.replace("IDS_NAME", "equilibrium")
 YMMSL_INNER_CORE_PROFILES = YMMSL_INNER_TEMPLATE.replace("IDS_NAME", "core_profiles")
 
