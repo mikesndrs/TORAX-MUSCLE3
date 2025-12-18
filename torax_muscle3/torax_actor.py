@@ -34,6 +34,7 @@ from torax._src.orchestration.run_simulation import make_step_fn, prepare_simula
 from torax._src.state import SimError
 from torax._src.torax_pydantic.model_config import ToraxConfig
 from ymmsl import Operator
+from torax import experimental as torax_experimental
 
 from torax_muscle3.utils import (
     ExtraVarCollection,
@@ -61,6 +62,7 @@ class ToraxMuscleRunner:
     # state
     sim_state: SimState
     post_processed_outputs = None
+    geometry_provider = None
     extra_var_col: ExtraVarCollection
     t_cur: float
     t_next_inner: Optional[float] = None
@@ -109,6 +111,7 @@ class ToraxMuscleRunner:
             self.post_processed_outputs,
             self.step_fn,
         ) = prepare_simulation(self.torax_config)
+        self.geometry_provider = self.torax_config.geometry.build_provider
 
         self.time_step_calculator_dynamic_params = self.step_fn.runtime_params_provider(
             self.sim_state.t
@@ -124,6 +127,7 @@ class ToraxMuscleRunner:
             self.sim_state, self.post_processed_outputs = (
                 initial_state_lib.get_initial_state_and_post_processed_outputs(
                     step_fn=self.step_fn,
+                    geometry_overrides=self.geometry_provider,
                 )
             )
             self.t_final = self.step_fn.runtime_params_provider.numerics.t_final
@@ -141,7 +145,7 @@ class ToraxMuscleRunner:
             if self.instance.is_connected("equilibrium_o_i"):
                 equilibrium_data = self.get_equilibrium_ids()
                 self.send_ids(equilibrium_data, "equilibrium", "o_i")
-            if self.instance.is_connected("equilibrium_o_i"):
+            if self.instance.is_connected("core_profiles_o_i"):
                 core_profiles_data = self.get_core_profiles_ids()
                 self.send_ids(core_profiles_data, "core_profiles", "o_i")
 
@@ -154,6 +158,7 @@ class ToraxMuscleRunner:
         self.sim_state, self.post_processed_outputs = self.step_fn(
             self.sim_state,
             self.post_processed_outputs,
+            geo_overrides=self.geometry_provider,
         )
         sim_error = self.step_fn.check_for_errors(
             self.sim_state,
@@ -267,15 +272,12 @@ class ToraxMuscleRunner:
         # temp extra vars code
         self.extra_var_col.pad_extra_vars()
         self.last_equilibrium_call = self.t_cur
-        self.torax_config.update_fields(
+        self.geometry_provider = torax_experimental.geometry.Geometry.from_dict(
             {
-                "geometry": {
-                    'geometry_type': geometry.GeometryType.IMAS,
-                    'geometry_configs': geometry_configs,
-                }
+                'geometry_type': geometry.GeometryType.IMAS,
+                'geometry_configs': geometry_configs,
             }
-        )
-        self.step_fn = make_step_fn(self.torax_config)
+        ).build_provider
 
     def receive_core_profiles(self, port_name: str) -> None:
         if not self.instance.is_connected(f"core_profiles_{port_name}"):

@@ -6,13 +6,8 @@ from imas.ids_defs import CLOSEST_INTERP
 import torax_muscle3
 from torax_muscle3.torax_actor import main as torax_actor
 
-# libmuscle and ymmsl are optional dependencies, so may not be installed
-libmuscle = pytest.importorskip("libmuscle")
-ymmsl = pytest.importorskip("ymmsl")
-
-# imas_core is required for IDS serialize, unfortunately this means we cannot run these
-# tests in github Actions yet..
-pytest.importorskip("imas_core")
+import ymmsl
+import libmuscle
 
 
 def source_for_tests():
@@ -168,7 +163,7 @@ YMMSL_INPUT_CORE_PROFILES = YMMSL_INPUT_TEMPLATE.replace("IDS_NAME", "core_profi
 YMMSL_OUTPUT_EQUILIBRIUM = YMMSL_OUTPUT_TEMPLATE.replace("IDS_NAME", "equilibrium")
 YMMSL_OUTPUT_CORE_PROFILES = YMMSL_OUTPUT_TEMPLATE.replace("IDS_NAME", "core_profiles")
 YMMSL_REPLY_EQUILIBRIUM = YMMSL_REPLY_TEMPLATE.replace("IDS_NAME", "equilibrium")
-# YMMSL_REPLY_CORE_PROFILES = YMMSL_REPLY_TEMPLATE.replace('IDS_NAME', 'core_profiles')
+YMMSL_REPLY_CORE_PROFILES = YMMSL_REPLY_TEMPLATE.replace('IDS_NAME', 'core_profiles')
 YMMSL_INNER_EQUILIBRIUM = YMMSL_INNER_TEMPLATE.replace("IDS_NAME", "equilibrium")
 YMMSL_INNER_CORE_PROFILES = YMMSL_INNER_TEMPLATE.replace("IDS_NAME", "core_profiles")
 
@@ -193,7 +188,7 @@ def test_actor(tmp_path, monkeypatch, ymmsl_text):
     filename = "ITERhybrid_COCOS17_IDS_ddv4.nc"
     data_source_path = f"{torax_muscle3.__path__[0]}/tests/data/{filename}"
     data_sink_path = f"imas:hdf5?path={(tmp_path / 'sink_dir').absolute()}"
-    config_path = f"{torax.__path__[0]}/examples/iterhybrid_predictor_corrector.py"
+    config_path = f"{torax_muscle3.__path__[0]}/tests/basic_config.py"
     configuration = ymmsl.load(
         ymmsl_text.format(
             data_source_path=data_source_path,
