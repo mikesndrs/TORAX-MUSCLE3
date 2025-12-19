@@ -17,7 +17,6 @@ classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
     "Environment :: Plugins",
-    "Framework :: Flake8",
     "Framework :: Pytest",
     "Framework :: Sphinx",
 # Custom trove classifiers are not allowed, and newer versions of python setuptools will fail to build
@@ -77,10 +76,8 @@ test = [
     "pytest-randomly",
 ]
 linting = [
-    "black>=24,<25",
-    "flake8",
+    "ruff",
     "mypy",
-    "isort",
 ]
 
 [project.urls]
@@ -99,9 +96,8 @@ testpaths = "tests"
 write_to = "torax_muscle3/_version.py"
 local_scheme = "no-local-version"
 
-[tool.black]
-# Exclude versioneer-generated file
-force-exclude = "torax_muscle3/_version.py"
+[tool.ruff]
+exclude = ["torax_muscle3/_version.py"]
 
 [tool.mypy]
 packages = "torax_muscle3"
@@ -122,6 +118,3 @@ module = [
 ]
 ignore_missing_imports = true
 
-[tool.isort]
-profile = "black"
-skip=['torax_muscle3/_version.py']

@@ -19,15 +19,15 @@ SDCC setup
 
     mkdir projects
     cd projects
-    git clone ssh://git@git.iter.org/scen/torax-m3.git
-    cd torax-m3
+    git clone git@github.com:mikesndrs/TORAX-MUSCLE3.git
+    cd TORAX-MUSCLE3
 
 * Setup a python virtual environment and install python dependencies
 
   .. code-block:: bash
 
     # load IMAS and IMASPy before install
-    module load IMAS/3.40.1-5.1.0-intel-2020b IMASPy MUSCLE3
+    module load IMAS-Python MUSCLE3
     python3 -m venv ./venv
     . venv/bin/activate
     pip install --upgrade pip
@@ -39,7 +39,7 @@ SDCC setup
 
   .. code-block:: bash
 
-    # Load modules every time you use torax-m3
+    # Load modules every time you use torax-muscle3
     module load IMAS/3.40.1-5.1.0-intel-2020b IMASPy MUSCLE3
     # And activate the Python virtual environment
     . venv/bin/activate
@@ -48,7 +48,7 @@ SDCC setup
 
   .. code-block:: bash
 
-    python3 -c "import torax-m3; print(torax-m3.__version__)"
+    python3 -c "import torax_muscle3; print(torax_muscle3.__version__)"
     pytest
 
 
@@ -69,8 +69,8 @@ Ubuntu installation
 
     mkdir projects
     cd projects
-    git clone ssh://git@git.iter.org/scen/torax-m3.git
-    cd torax-m3
+    git clone git@github.com:mikesndrs/TORAX-MUSCLE3.git
+    cd TORAX-MUSCLE3
 
 * Setup a python virtual environment and install python dependencies
 
@@ -83,18 +83,14 @@ Ubuntu installation
     # For development an installation in editable mode may be more convenient
     pip install .[all]
 
-* Install IMASPy.
-
-  Follow the instructions from `IMASPy installation docs <https://git.iter.org/projects/IMAS/repos/imaspy/browse/docs/source/installing.rst>`_
-
 * Test the installation
 
   .. code-block:: bash
 
-    python3 -c "import torax-m3; print(torax-m3.__version__)"
+    python3 -c "import torax_m3; print(torax_muscle3.__version__)"
     pytest
 
-* To build the torax-m3 documentation, execute:
+* To build the torax-muscle3 documentation, execute:
 
   .. code-block:: bash
 

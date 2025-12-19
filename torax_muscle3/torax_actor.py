@@ -1,7 +1,7 @@
-r"""
+"""
 MUSCLE3 actor wrapping TORAX.
 
-Configuration can be specified as a path to a config file,.
+Configuration can be specified as a path to a config file,
 and individual muscle3 config keys will be overwritten on that.
 
 Start without inputs and outputs, and then add a static and
@@ -51,43 +51,55 @@ logger = logging.getLogger()
 
 
 class ToraxMuscleRunner:
+    """Object for running torax simulation"""
 
-    coupled_ids_names = ["equilibrium", "core_profiles"]
-    # first_run
     first_run: bool = True
+    """Whether this is the first reuse_instance loop"""
     output_all_timeslices: Optional[bool] = False
+    """Whether to combine all timeslices at once in the final output"""
     db_out: DBEntry
+    """IMAS DBEntry for gathering the timeslices if output_all_timeslices is True"""
     torax_config: ToraxConfig
-    step_fn: SimulationStepFn
+    """ToraxConfig object"""
     equilibrium_interval = None
-
-    # state
-    sim_state: SimState
-    post_processed_outputs: PostProcessedOutputs
+    """Interval for communation through MUSCLE3 ports"""
+    step_fn: SimulationStepFn
+    """Torax step_function object"""
     geometry_provider: StandardGeometryProvider
+    """Torax geometry_provider object"""
     runtime_params_provider: RuntimeParamsProvider
+    """Torax runtime_params_provider object"""
+    sim_state: SimState
+    """Torax simulation_state object"""
+    post_processed_outputs: PostProcessedOutputs
+    """Torax post_processed_outputs object"""
     extra_var_col: ExtraVarCollection
+    """Object to save state of IDS variables that cannot be saved in Torax state """
     t_cur: float
+    """Time value inside time loop"""
     t_next_inner: Optional[float] = None
+    """Next expected output timestamp for inner time loop"""
     t_next_outer: Optional[float] = None
+    """Next expected final output timestamp for reuse_instance loop"""
     finished: bool = False
+    """Whether the run_sim function has been run fully"""
     last_equilibrium_call = -np.inf
+    """Last timestamp for which the MUSCLE3 communication was done"""
 
     def __init__(self) -> None:
         self.get_instance()
         self.extra_var_col = ExtraVarCollection()
 
     def run_sim(self) -> None:
+        """Runs a TORAX simulation using the MUSCLE3 actor"""
         if self.finished:
-            raise Warning("Already finished")
+            raise RuntimeError("Already finished")
 
         while self.instance.reuse_instance():
             if self.first_run:
                 self.run_prep()
             self.run_f_init()
-            while not self.step_fn.is_done(
-                self.t_cur,
-            ):
+            while not self.step_fn.is_done(self.t_cur):
                 self.run_o_i()
                 self.run_s()
                 self.run_timestep()
@@ -96,6 +108,7 @@ class ToraxMuscleRunner:
         self.finished = True
 
     def run_prep(self) -> None:
+        """Prepare a TORAX simulation based on torax config and MUSCLE3 settings"""
         self.equilibrium_interval = get_setting_optional(
             self.instance, "equilibrium_interval", 1e-6
         )
@@ -120,8 +133,9 @@ class ToraxMuscleRunner:
         )
 
     def run_f_init(self) -> None:
-        for ids_name in self.coupled_ids_names:
-            self.receive_ids(ids_name=ids_name, port_name="f_init")
+        """Initialize the actor state before the time loop using MUSCLE3 connections"""
+        self.receive_equilibrium(port_name="f_init")
+        self.receive_core_profiles(port_name="f_init")
         self.t_cur = self.sim_state.t
         if self.first_run or self.instance.is_connected("equilibrium_f_init"):
             self.step_fn = make_step_fn(self.torax_config)
@@ -136,24 +150,26 @@ class ToraxMuscleRunner:
         self.first_run = False
 
         if self.output_all_timeslices:
-            for ids_name in self.coupled_ids_names:
-                ids_data = self.get_ids(ids_name)
-                self.db_out.put_slice(ids_data)
+            self.db_out.put_slice(self.get_equilibrium_ids())
+            self.db_out.put_slice(self.get_core_profiles_ids())
 
     def run_o_i(self) -> None:
+        """Send out time loop state using MUSCLE3 connections"""
         self.t_next_inner = self.get_t_next()
         if self.t_cur >= self.last_equilibrium_call + self.equilibrium_interval:
-            for ids_name in self.coupled_ids_names:
-                if self.instance.is_connected(f"{ids_name}_o_i"):
-                    ids_data = self.get_ids(ids_name)
-                    self.send_ids(ids_data, ids_name, "o_i")
+            if self.instance.is_connected("equilibrium_o_i"):
+                self.send_ids(self.get_equilibrium_ids(), "equilibrium", "o_i")
+            if self.instance.is_connected("core_profiles_o_i"):
+                self.send_ids(self.get_core_profiles_ids(), "core_profiles", "o_i")
 
     def run_s(self) -> None:
+        """Update time loop state using MUSCLE3 connections"""
         if self.t_cur >= self.last_equilibrium_call + self.equilibrium_interval:
-            for ids_name in self.coupled_ids_names:
-                self.receive_ids(ids_name=ids_name, port_name="s")
+            self.receive_equilibrium(port_name="s")
+            self.receive_core_profiles(port_name="s")
 
     def run_timestep(self) -> None:
+        """Evolve time loop state using the TORAX step function"""
         self.sim_state, self.post_processed_outputs = self.step_fn(
             self.sim_state,
             self.post_processed_outputs,
@@ -167,24 +183,26 @@ class ToraxMuscleRunner:
         self.t_cur = self.sim_state.t
 
         if self.output_all_timeslices:
-            for ids_name in self.coupled_ids_names:
-                ids_data = self.get_ids(ids_name)
-                self.db_out.put_slice(ids_data)
+            self.db_out.put_slice(self.get_equilibrium_ids())
+            self.db_out.put_slice(self.get_core_profiles_ids())
 
         if sim_error != SimError.NO_ERROR:
-            raise Exception(sim_error)
+            raise RuntimeError(sim_error)
 
     def run_o_f(self) -> None:
-        for ids_name in self.coupled_ids_names:
-            if self.output_all_timeslices:
-                ids_data = self.db_out.get(ids_name)
-            else:
-                ids_data = self.get_ids(ids_name)
-            self.send_ids(ids_data, ids_name, "o_f")
+        """Send out final state using MUSCLE3 connections"""
         if self.output_all_timeslices:
+            equilibrium_data = self.db_out.get("equilibrium")
+            core_profiles_data = self.db_out.get("core_profiles")
             self.db_out.close()
+        else:
+            equilibrium_data = self.get_equilibrium_ids()
+            core_profiles_data = self.get_core_profiles_ids()
+        self.send_ids(equilibrium_data, "equilibrium", "o_f")
+        self.send_ids(core_profiles_data, "core_profiles", "o_f")
 
     def get_instance(self) -> None:
+        """Initialize MUSCLE3 instance and set up connection ports"""
         coupled_ids_names = ["equilibrium", "core_profiles"]
         self.instance = Instance(
             {
@@ -197,18 +215,8 @@ class ToraxMuscleRunner:
             }
         )
 
-    def get_ids(self, ids_name: str) -> IDSToplevel:
-        if ids_name == "equilibrium":
-            ids_data = self.get_equilibrium_ids()
-        elif ids_name == "core_profiles":
-            ids_data = self.get_core_profiles_ids()
-        else:
-            raise RuntimeError(
-                f"Trying to get uncoupled IDS {ids_name} from Torax state"
-            )
-        return ids_data
-
     def get_equilibrium_ids(self) -> IDSToplevel:
+        """Get equilibrium IDS from torax state"""
         equilibrium_data = torax_state_to_imas_equilibrium(
             self.sim_state, self.post_processed_outputs
         )
@@ -217,6 +225,7 @@ class ToraxMuscleRunner:
         return equilibrium_data
 
     def get_core_profiles_ids(self) -> IDSToplevel:
+        """Get core_profiles IDS from torax state"""
         core_profiles_data = core_profiles_to_IMAS(
             self.step_fn.runtime_params_provider,
             self.torax_config,
@@ -228,25 +237,17 @@ class ToraxMuscleRunner:
         )
         return core_profiles_data
 
-    def receive_ids(self, ids_name: str, port_name: str) -> None:
-        if ids_name == "equilibrium":
-            self.receive_equilibrium(port_name)
-        elif ids_name == "core_profiles":
-            self.receive_core_profiles(port_name)
-        else:
-            raise RuntimeError(f"Trying to receive uncoupled IDS {ids_name}")
-
     def receive_equilibrium(self, port_name: str) -> None:
+        """Receive equilibrium IDS through MUSCLE3 connections"""
         if not self.instance.is_connected(f"equilibrium_{port_name}"):
             return
         equilibrium_data, self.t_cur, t_next = self.receive_ids_data(
             "equilibrium", port_name
         )
-        if port_name == "f_init":
-            self.t_next_outer = t_next
-        elif port_name == "s":
-            self.t_next_inner = t_next
+        self.update_t_next(t_next, port_name)
 
+        # if output_flag is -1 it means the code did not run successfully
+        # and the result should not be used
         if (
             equilibrium_data.code.output_flag
             and equilibrium_data.code.output_flag[0] == -1
@@ -297,15 +298,13 @@ class ToraxMuscleRunner:
         ).build_provider
 
     def receive_core_profiles(self, port_name: str) -> None:
+        """Receive core_profiles IDS through MUSCLE3 connections"""
         if not self.instance.is_connected(f"core_profiles_{port_name}"):
             return
         core_profiles_data, self.t_cur, t_next = self.receive_ids_data(
             "core_profiles", port_name
         )
-        if port_name == "f_init":
-            self.t_next_outer = t_next
-        elif port_name == "s":
-            self.t_next_inner = t_next
+        self.update_t_next(t_next, port_name)
 
         # ignore this entry if input source didn't converge
         if (
@@ -325,6 +324,7 @@ class ToraxMuscleRunner:
     def receive_ids_data(
         self, ids_name: str, port_name: str
     ) -> Tuple[IDSToplevel, float, Optional[float]]:
+        """Receive IDS message through MUSCLE3"""
         if not self.instance.is_connected(f"{ids_name}_{port_name}"):
             raise Warning("Calling receive while not connected")
         msg = self.instance.receive(f"{ids_name}_{port_name}")
@@ -335,6 +335,7 @@ class ToraxMuscleRunner:
         return ids_data, t_cur, t_next
 
     def send_ids(self, ids: IDSToplevel, ids_name: str, port_name: str) -> None:
+        """Send IDS message through MUSCLE3"""
         if not self.instance.is_connected(f"{ids_name}_{port_name}"):
             return
         if port_name == "o_i":
@@ -345,6 +346,7 @@ class ToraxMuscleRunner:
         self.instance.send(f"{ids_name}_{port_name}", msg)
 
     def get_t_next(self) -> Optional[float]:
+        """Calculate expected next timestamp in time loop"""
         runtime_params_t, geo_t = get_consistent_runtime_params_and_geometry(
             t=self.sim_state.t,
             runtime_params_provider=self.runtime_params_provider,
@@ -361,6 +363,13 @@ class ToraxMuscleRunner:
         if t_next >= self.t_final:
             t_next = None
         return t_next
+
+    def update_t_next(self, t_next: Optional[float], port_name: str) -> None:
+        """Update t_next to given value"""
+        if port_name == "f_init":
+            self.t_next_outer = t_next
+        elif port_name == "s":
+            self.t_next_inner = t_next
 
 
 def main() -> None:

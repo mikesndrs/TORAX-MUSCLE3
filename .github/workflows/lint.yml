@@ -18,15 +18,12 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install --upgrade .[linting]
-      - name: black
+      - name: ruff linter
         run: |
-          black --check torax_muscle3
-      - name: flake8
+          ruff check --output-format=github torax_muscle3
+      - name: ruff formatter
         run: |
-          flake8 torax_muscle3
+          ruff format --diff torax_muscle3
       - name: mypy
         run: |
           mypy torax_muscle3
-      - name: isort
-        run: |
-          isort --check-only torax_muscle3

@@ -8,7 +8,6 @@ https://www.sphinx-doc.org/en/master/usage/configuration.html
 
 import datetime
 import sys
-from urllib.parse import urljoin
 
 # Sphinx extention to format xarray/pandas summaries
 import sphinx_autosummary_accessors
