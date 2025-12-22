@@ -1,0 +1,23 @@
+ymmsl_version: v0.1
+
+model:
+  name: torax_solo
+
+  components:
+    torax:
+      implementation: torax
+
+  conduits:
+
+settings:
+    muscle_remote_log_level: DEBUG
+    
+resources:
+  torax:
+    threads: 1
+
+implementations:
+   torax:
+     virtual_env: torax_venv
+     executable: python
+     args: ../../../../torax_m3/torax_m3.py
