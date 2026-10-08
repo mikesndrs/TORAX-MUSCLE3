@@ -197,14 +197,11 @@ class ToraxMuscleRunner:
                 if self.finished:
                     break
                 self.save_snapshot()
-            if not self.finished:
-                # The loop above never predicts next_timestamp=None itself (see
-                # get_t_next()) -- send the real, authoritative end-of-stream message
-                # now that step_fn.is_done() is confirmed on the actual (not
-                # predicted) final state, once per reuse_instance() pass.
-                self.t_next_inner = None
-                self.run_o_i()
-                self.run_s()
+            # Send the end-of-stream message (next_timestamp=None) whether this
+            # pass ended normally or on a SimError; flag the latter invalid.
+            self.t_next_inner = None
+            self.run_o_i(invalid=self.finished)
+            self.run_s()
             self.run_o_f()
             self.save_final_snapshot()
 
@@ -380,10 +377,19 @@ class ToraxMuscleRunner:
             self.db_out.put_slice(self.get_equilibrium_ids())
             self.db_out.put_slice(self.get_core_profiles_ids())
 
-    def run_o_i(self) -> None:
-        """Send out time loop state using MUSCLE3 connections"""
-        self.send_ids(self.get_equilibrium_ids(), "equilibrium", "out_i")
-        self.send_ids(self.get_core_profiles_ids(), "core_profiles", "out_i")
+    def run_o_i(self, invalid: bool = False) -> None:
+        """Send out time loop state using MUSCLE3 connections.
+
+        Sets code.output_flag on every message (0, or -1 when invalid=True)
+        since the slice-writing sink cannot add the field late.
+        """
+        equilibrium_data = self.get_equilibrium_ids()
+        core_profiles_data = self.get_core_profiles_ids()
+        flag = -1 if invalid else 0
+        for ids in (equilibrium_data, core_profiles_data):
+            ids.code.output_flag = np.full(max(len(ids.time), 1), flag, np.int32)
+        self.send_ids(equilibrium_data, "equilibrium", "out_i")
+        self.send_ids(core_profiles_data, "core_profiles", "out_i")
 
     def run_s(self) -> None:
         """Update time loop state using MUSCLE3 connections"""
@@ -393,6 +399,7 @@ class ToraxMuscleRunner:
 
     def run_timestep(self) -> None:
         """Evolve time loop state using the TORAX step function"""
+        last_state = (self.sim_state, self.post_processed_outputs)
         self.sim_state, self.post_processed_outputs = self.step_fn(
             self.sim_state,
             self.post_processed_outputs,
@@ -406,6 +413,13 @@ class ToraxMuscleRunner:
         self.t_cur = self.sim_state.t
 
         if sim_error != SimError.NO_ERROR:
+            sim_error.log_error()
+            logger.error(
+                "TORAX step failed: SimError.%s at t=%g s", sim_error.name, self.t_cur
+            )
+            # Discard the failed step, keep the last accepted state.
+            self.sim_state, self.post_processed_outputs = last_state
+            self.t_cur = self.sim_state.t
             self.finished = True
             return
 
